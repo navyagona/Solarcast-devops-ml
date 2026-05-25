@@ -1,0 +1,28 @@
+2026-05-25 01:26:57,316 [INFO] ============================================================
+2026-05-25 01:26:57,317 [INFO] SolarCast – Regional ML Training Pipeline
+2026-05-25 01:26:57,317 [INFO] ============================================================
+2026-05-25 01:26:57,603 [INFO] Loaded dataset: 70,272 rows × 26 cols
+2026-05-25 01:26:57,611 [INFO] Regions: {'North': 17568, 'South': 17568, 'East': 17568, 'West': 17568}
+2026-05-25 01:26:57,665 [INFO] Feature matrix ready. Shape: (70272, 10)
+2026-05-25 01:26:57,691 [INFO] Train: (56217, 10) | Test: (14055, 10)
+2026-05-25 01:26:57,714 [INFO] Training RandomForestRegressor (50 trees, compact for low-disk)...
+2026-05-25 01:26:58,579 [INFO] Training complete.
+2026-05-25 01:26:58,626 [INFO] =======================================================
+2026-05-25 01:26:58,627 [INFO] OVERALL MODEL EVALUATION
+2026-05-25 01:26:58,627 [INFO]   MAE  : 0.0652 kW
+2026-05-25 01:26:58,627 [INFO]   RMSE : 0.1322 kW
+2026-05-25 01:26:58,627 [INFO]   R2   : 0.9973
+2026-05-25 01:26:58,627 [INFO] =======================================================
+2026-05-25 01:26:58,627 [INFO] PER-REGION METRICS:
+2026-05-25 01:26:58,635 [INFO]   East  : MAE=0.0623  RMSE=0.1280  R2=0.9970
+2026-05-25 01:26:58,639 [INFO]   North : MAE=0.0664  RMSE=0.1321  R2=0.9975
+2026-05-25 01:26:58,641 [INFO]   South : MAE=0.0681  RMSE=0.1374  R2=0.9972
+2026-05-25 01:26:58,643 [INFO]   West  : MAE=0.0642  RMSE=0.1312  R2=0.9974
+2026-05-25 01:26:59,708 [INFO] Evaluation chart saved: C:\Users\DELL\solar power predictions devops ml\notebooks\regional_evaluation.png
+2026-05-25 01:26:59,829 [INFO] Model saved   : C:\Users\DELL\solar power predictions devops ml\model\solar_model.pkl
+2026-05-25 01:26:59,829 [INFO] Scaler saved  : C:\Users\DELL\solar power predictions devops ml\model\scaler.pkl
+2026-05-25 01:26:59,829 [INFO] Encoder saved : C:\Users\DELL\solar power predictions devops ml\model\encoder.pkl
+2026-05-25 01:26:59,830 [INFO] ============================================================
+2026-05-25 01:26:59,830 [INFO] Training complete! Start the API with:
+2026-05-25 01:26:59,830 [INFO]   uvicorn app.api:app --reload --port 8000
+2026-05-25 01:26:59,830 [INFO] ============================================================
