@@ -11,6 +11,7 @@ venv/
 .pytest_cache/
 
 # Terraform
+terraform.exe
 .terraform/
 terraform.tfstate
 terraform.tfstate.backup
