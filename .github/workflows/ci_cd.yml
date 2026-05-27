@@ -105,6 +105,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: false
+          load: true
           tags: |
             ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
             ${{ env.DOCKER_IMAGE }}:latest
