@@ -24,33 +24,43 @@
 ### Architecture Diagram
 
 ```mermaid
-graph TD
-    User([End Users])
-    Dev([Developers])
-    GitHub([GitHub Actions CI/CD])
-    Terraform([Terraform IaC])
+graph LR
+    %% Actors
+    Dev([👨‍💻 Developers])
+    User([🌐 End Users])
 
-    subgraph AWS_Cloud [AWS Cloud]
-        subgraph EC2 [AWS EC2 Instance - t3.micro]
-            subgraph Docker [Docker Compose Network]
-                UI[Streamlit Dashboard<br>Port 8501]
-                API[FastAPI Backend<br>Port 8000]
-                Prom[Prometheus Metrics<br>Port 9090]
-                Graf[Grafana Dashboards<br>Port 3000]
+    %% CI/CD & IaC
+    subgraph Automation [CI/CD & Infrastructure]
+        GitHub[GitHub Actions]
+        Terraform[Terraform]
+    end
+
+    %% AWS Cloud Environment
+    subgraph AWS_Cloud [☁️ AWS Cloud]
+        subgraph EC2 [EC2 Instance - t3.micro]
+            subgraph Docker [🐳 Docker Compose Network]
+                UI[Streamlit Dashboard<br>:8501]
+                API[FastAPI Backend<br>:8000]
+                Prom[Prometheus<br>:9090]
+                Graf[Grafana<br>:3000]
             end
         end
     end
 
-    Dev -- "Push Code (main)" --> GitHub
-    Dev -- "terraform apply" --> Terraform
-    Terraform -- "Provisions Server & Network" --> AWS_Cloud
-    GitHub -- "SSH Deploy & docker-compose up" --> EC2
+    %% Deployment Flow
+    Dev -->|"Push Code"| GitHub
+    Dev -->|"terraform apply"| Terraform
+    
+    Terraform -->|"Provisions Server"| AWS_Cloud
+    GitHub -->|"SSH Deploy & Build"| EC2
 
-    User -- "Views Dashboard" --> UI
-    User -- "REST API Calls" --> API
-    UI -- "Fetches Predictions" --> API
-    Prom -- "Scrapes /metrics endpoint" --> API
-    Graf -- "Queries Timeseries Data" --> Prom
+    %% User & Internal Flow
+    User -->|"Views UI"| UI
+    User -->|"API Calls"| API
+    
+    UI -->|"Fetches Predictions"| API
+    Prom -->|"Scrapes /metrics"| API
+    Graf -->|"Queries Data"| Prom
 ```
 
 ### Architecture Workflow
