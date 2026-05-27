@@ -30,7 +30,7 @@ graph TD
     GitHub([GitHub Actions CI/CD])
     Terraform([Terraform IaC])
 
-    subgraph AWS Cloud
+    subgraph AWS_Cloud [AWS Cloud]
         subgraph EC2 [AWS EC2 Instance - t3.micro]
             subgraph Docker [Docker Compose Network]
                 UI[Streamlit Dashboard<br>Port 8501]
@@ -43,7 +43,7 @@ graph TD
 
     Dev -- "Push Code (main)" --> GitHub
     Dev -- "terraform apply" --> Terraform
-    Terraform -- "Provisions Server & Network" --> AWS Cloud
+    Terraform -- "Provisions Server & Network" --> AWS_Cloud
     GitHub -- "SSH Deploy & docker-compose up" --> EC2
 
     User -- "Views Dashboard" --> UI
