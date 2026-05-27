@@ -6,51 +6,73 @@ data "aws_vpc" "default" {
   default = true
 }
 
-data "aws_subnets" "default" {
+data "aws_subnet" "selected" {
+  vpc_id            = data.aws_vpc.default.id
+  availability_zone = "${var.aws_region}a"
+}
+
+data "aws_ami" "ubuntu" {
+  most_recent = true
+
   filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
-}
 
-resource "aws_ecr_repository" "solarcast_api" {
-  name                 = "${var.project_name}-api"
-  image_scanning_configuration {
-    scan_on_push = true
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
   }
-  image_tag_mutability = "MUTABLE"
-  tags = {
-    Environment = var.environment
-    Project     = var.project_name
-  }
+
+  owners = ["099720109477"] # Canonical
 }
 
-resource "aws_iam_role" "ecs_task_execution" {
-  name = "${var.project_name}-task-execution"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action    = "sts:AssumeRole"
-      Effect    = "Allow"
-      Principal = { Service = "ecs-tasks.amazonaws.com" }
-    }]
-  })
+resource "aws_key_pair" "deployer" {
+  key_name   = "${var.project_name}-key"
+  public_key = var.public_key
 }
 
-resource "aws_iam_role_policy_attachment" "ecs_task_execution_policy" {
-  role       = aws_iam_role.ecs_task_execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-resource "aws_security_group" "ecs_service" {
-  name   = "${var.project_name}-ecs-sg"
-  vpc_id = data.aws_vpc.default.id
+resource "aws_security_group" "ec2_sg" {
+  name        = "${var.project_name}-ec2-sg"
+  description = "Allow SSH and HTTP traffic"
+  vpc_id      = data.aws_vpc.default.id
 
   ingress {
-    description = "Allow HTTP from the internet"
-    from_port   = 80
-    to_port     = 80
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "FastAPI"
+    from_port   = 8000
+    to_port     = 8000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Streamlit"
+    from_port   = 8501
+    to_port     = 8501
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Prometheus"
+    from_port   = 9090
+    to_port     = 9090
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Grafana"
+    from_port   = 3000
+    to_port     = 3000
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -63,128 +85,42 @@ resource "aws_security_group" "ecs_service" {
   }
 
   tags = {
-    Name        = "${var.project_name}-ecs-sg"
+    Name        = "${var.project_name}-ec2-sg"
     Environment = var.environment
   }
 }
 
-resource "aws_lb" "alb" {
-  name               = "${var.project_name}-alb"
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.ecs_service.id]
-  subnets            = data.aws_subnets.default.ids
-  tags = {
-    Environment = var.environment
-    Project     = var.project_name
-  }
-}
+resource "aws_instance" "app_server" {
+  ami           = data.aws_ami.ubuntu.id
+  instance_type = var.instance_type
+  key_name      = aws_key_pair.deployer.key_name
 
-resource "aws_lb_target_group" "api" {
-  name        = "${var.project_name}-tg"
-  port        = 8000
-  protocol    = "HTTP"
-  target_type = "ip"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
+  subnet_id              = data.aws_subnet.selected.id
 
-  health_check {
-    path                = "/health"
-    protocol            = "HTTP"
-    matcher             = "200-399"
-    interval            = 30
-    timeout             = 5
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
-  }
-
-  tags = {
-    Environment = var.environment
-    Project     = var.project_name
-  }
-}
-
-resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.alb.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.api.arn
-  }
-}
-
-resource "aws_ecs_cluster" "main" {
-  name = "${var.project_name}-cluster"
+  user_data = <<-EOF
+              #!/bin/bash
+              apt-get update
+              apt-get install -y ca-certificates curl gnupg
+              install -m 0755 -d /etc/apt/keyrings
+              curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+              chmod a+r /etc/apt/keyrings/docker.gpg
+              
+              echo \
+                "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+                $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+                tee /etc/apt/sources.list.d/docker.list > /dev/null
+                
+              apt-get update
+              apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin git
+              
+              usermod -aG docker ubuntu
+              systemctl enable docker
+              systemctl start docker
+              EOF
 
   tags = {
+    Name        = "${var.project_name}-server"
     Environment = var.environment
-    Project     = var.project_name
-  }
-}
-
-resource "aws_cloudwatch_log_group" "ecs" {
-  name              = "/ecs/${var.project_name}"
-  retention_in_days = 14
-}
-
-resource "aws_ecs_task_definition" "api" {
-  family                   = "${var.project_name}-task"
-  cpu                      = tostring(var.task_cpu)
-  memory                   = tostring(var.task_memory)
-  network_mode             = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
-  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
-
-  container_definitions = jsonencode([
-    {
-      name      = "${var.project_name}-container"
-      image     = "${aws_ecr_repository.solarcast_api.repository_url}:${var.image_tag}"
-      essential = true
-      portMappings = [{
-        containerPort = 8000
-        protocol      = "tcp"
-      }]
-      environment = [
-        { name = "ENV", value = var.environment }
-      ]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.ecs.name
-          awslogs-region        = var.aws_region
-          awslogs-stream-prefix = "ecs"
-        }
-      }
-    }
-  ])
-}
-
-resource "aws_ecs_service" "api" {
-  name            = "${var.project_name}-service"
-  cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.api.arn
-  launch_type     = "FARGATE"
-  desired_count   = var.desired_count
-
-  deployment_minimum_healthy_percent = 50
-  deployment_maximum_percent        = 200
-
-  network_configuration {
-    subnets         = data.aws_subnets.default.ids
-    security_groups = [aws_security_group.ecs_service.id]
-    assign_public_ip = true
-  }
-
-  load_balancer {
-    target_group_arn = aws_lb_target_group.api.arn
-    container_name   = "${var.project_name}-container"
-    container_port   = 8000
-  }
-
-  depends_on = [aws_lb_listener.http]
-
-  tags = {
-    Environment = var.environment
-    Project     = var.project_name
   }
 }

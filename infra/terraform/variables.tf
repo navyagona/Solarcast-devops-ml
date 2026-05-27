@@ -16,26 +16,13 @@ variable "environment" {
   default     = "production"
 }
 
-variable "task_cpu" {
-  description = "CPU units for the ECS task definition"
-  type        = number
-  default     = 512
-}
-
-variable "task_memory" {
-  description = "Memory (MB) for the ECS task definition"
-  type        = number
-  default     = 1024
-}
-
-variable "desired_count" {
-  description = "Number of ECS service tasks"
-  type        = number
-  default     = 1
-}
-
-variable "image_tag" {
-  description = "Docker image tag to deploy"
+variable "instance_type" {
+  description = "EC2 instance type"
   type        = string
-  default     = "latest"
+  default     = "t3.micro"
+}
+
+variable "public_key" {
+  description = "SSH public key for EC2 access"
+  type        = string
 }
