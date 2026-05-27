@@ -1,172 +1,210 @@
-# ☀️ SolarCast v2.0 – Region-Based Solar Power Generation Forecasting System
+# ☀️ SolarCast v2.0 – Complete Regional Solar Power Forecasting System
 
-> **Production-ready ML + DevOps project** — Predicts solar power generation for North / South / East / West regions using ERA5 reanalysis weather data, RandomForestRegressor, FastAPI, Prometheus, Grafana, and Docker.
+> **A Production-Ready Machine Learning & DevOps Project**  
+> SolarCast predicts hourly solar power generation for North, South, East, and West regions using ERA5 reanalysis weather data. It is deployed as a fully containerized microservices stack on AWS EC2, managed via Terraform, and automatically deployed using GitHub Actions CI/CD.
 
 ---
 
 ## 📋 Table of Contents
-- [Overview](#overview)
-- [Dataset & Regions](#dataset--regions)
-- [Project Structure](#project-structure)
-- [Quick Start](#quick-start)
-- [API Usage](#api-usage)
-- [Dashboard](#dashboard)
-- [Monitoring](#monitoring)
-- [Docker Usage](#docker-usage)
-- [AWS EC2 Deployment](#aws-ec2-deployment)
-- [Grafana Integration](#grafana-integration)
-- [Running Tests](#running-tests)
-- [CI/CD Pipeline](#cicd-pipeline)
-- [Model Details](#model-details)
+1. [Overview & Architecture](#-overview--architecture)
+2. [Services Explanation](#-services-explanation)
+3. [Code & Directory Structure](#-code--directory-structure)
+4. [Step-by-Step Installation & Setup (Local)](#-step-by-step-installation--setup-local)
+5. [Step-by-Step AWS Deployment (Terraform)](#-step-by-step-aws-deployment-terraform)
+6. [CI/CD Workflow Explanation](#-cicd-workflow-explanation)
+7. [API Usage & Prediction](#-api-usage--prediction)
+8. [Machine Learning Details](#-machine-learning-details)
 
 ---
 
-## 🎯 Overview
+## 🏗️ Overview & Architecture
 
-**SolarCast v2.0** combines 4 regional ERA5 climate datasets into a unified ML pipeline that predicts hourly solar power generation from real weather variables.
+**SolarCast v2.0** brings together Machine Learning, Backend Engineering, Frontend Dashboards, and DevOps best practices into a single, cohesive architecture.
 
-| Component | Technology |
-|-----------|------------|
-| Data | ERA5 Land Reanalysis (ECMWF) |
-| ML Model | RandomForestRegressor (scikit-learn) |
-| API | FastAPI + Uvicorn |
-| Dashboard | Streamlit + Plotly |
-| Monitoring | Prometheus + Grafana |
-| Container | Docker + Docker Compose |
-| CI/CD | GitHub Actions |
+### Architecture Workflow
+1. **Infrastructure as Code (IaC):** The entire AWS infrastructure is provisioned using **Terraform**. Terraform spins up a `t3.micro` EC2 instance, configures an AWS Security Group (opening ports for the API, Dashboard, and Monitoring), and generates an SSH key for access.
+2. **CI/CD Pipeline:** Developers push code to the `main` branch on GitHub. A **GitHub Actions** workflow triggers automatically.
+3. **Automated Deployment:** The GitHub Action securely connects to the AWS EC2 instance via SSH, pulls the latest code from the repository, and executes `docker compose up -d --build`.
+4. **Microservices (Docker):** The EC2 instance runs four isolated Docker containers natively on a single virtual network.
+5. **End-User Access:** Users access the Streamlit Dashboard or FastAPI Swagger UI directly via the EC2 Public IP over the internet.
 
 ---
 
-## 🌍 Dataset & Regions
+## 🛠️ Services Explanation
 
-ERA5 hourly data for 2023 across 4 Indian climate zones:
+The `docker-compose.yml` orchestrates four primary services that talk to each other:
 
-| Region | Coordinates | Climate |
-|--------|-------------|---------|
-| North | 28°N, 73.3°E | Semi-arid (Rajasthan) |
-| South | 13°N, 77.6°E | Tropical (Bangalore) |
-| East | 20.3°N, 85.8°E | Humid subtropical (Odisha) |
-| West | 19.6°N, 75.5°E | Semi-arid (Maharashtra) |
+1. **FastAPI (Backend - Port 8000):**  
+   The core engine of the application. It loads the pre-trained RandomForest model and exposes HTTP endpoints (like `/predict` and `/health`). It validates incoming weather data using `Pydantic`, runs the ML inference pipeline, and returns the predicted solar output.
+   
+2. **Streamlit (Frontend - Port 8501):**  
+   An interactive web dashboard built purely in Python. It provides a visual interface for users to adjust weather parameters using sliders, instantly fetching predictions from the FastAPI backend. It also visualizes feature importance and historical trends using Plotly charts.
+   
+3. **Prometheus (Metrics Collector - Port 9090):**  
+   A time-series database configured to scrape the FastAPI `/metrics` endpoint every few seconds. It records the number of API requests, prediction latencies, HTTP errors, and system resource usage.
 
-**ERA5 Variables Used:**
-
-| Variable | Symbol | Unit | Used As |
-|----------|--------|------|---------|
-| 2m Temperature | t2m | K → °C | temperature |
-| Surface Pressure | sp | Pa → hPa | pressure |
-| Total Precipitation | tp | m → mm | precipitation |
-| Surface Solar Radiation | ssrd | J/m² → W/m² | radiation |
-| 10m Wind (U+V) | u10, v10 | m/s | wind_speed |
-
-**Synthetic Target Formula:**
-```
-base_power = radiation × 0.18 × 50 m² / 1000        (kW)
-temp_factor = 1 - 0.004 × max(0, temp_°C - 25)
-rain_factor = 1 - min(0.9, 2 × precip_mm)
-wind_factor = clip(1 + 0.01×wind - 0.001×wind², 0.8, 1.1)
-solar_power = base × temp_factor × rain_factor × wind_factor
-```
+4. **Grafana (Monitoring Dashboard - Port 3000):**  
+   A powerful visualization tool connected to Prometheus. It allows developers to create real-time dashboards to monitor the health of the application, API response times, and total successful ML predictions.
 
 ---
 
-## 🗂️ Project Structure
+## 🗂️ Code & Directory Structure
 
-```
-solar power predictions devops ml/
+Here is a clear breakdown of what every major file and folder in this project does:
+
+```text
+solarcast/
+├── app/                        # FastAPI Backend Code
+│   ├── api.py                  # Defines API routes, Prometheus metrics, and FastAPI initialization.
+│   ├── schemas.py              # Pydantic models for strict data validation (inputs/outputs).
+│   └── utils.py                # Helper functions for data preprocessing and running ML inference.
 │
-├── app/
-│   ├── __init__.py
-│   ├── api.py                  ← FastAPI (GET /, /health, POST /predict, GET /metrics)
-│   ├── schemas.py              ← Pydantic v2 models with Literal region validation
-│   └── utils.py                ← Loaders, preprocessing, inference pipeline
+├── dashboard/                  # Streamlit Frontend Code
+│   └── dashboard.py            # The multi-tab UI code for visualizing predictions and data.
 │
-├── model/
-│   ├── solar_model.pkl         ← Trained RandomForest (generated)
-│   ├── scaler.pkl              ← StandardScaler (generated)
-│   └── encoder.pkl             ← LabelEncoder for regions (generated)
+├── data/                       # Datasets
+│   └── unified_solar_dataset.csv # The final merged ERA5 weather dataset used for ML training.
 │
-├── notebooks/
-│   ├── build_dataset.py        ← Merges 4 regional ERA5 datasets → unified CSV
-│   ├── train_regional_model.py ← Full ML training pipeline
-│   └── training_regional.log   ← Training logs (generated)
+├── model/                      # Serialized ML Artifacts
+│   ├── solar_model.pkl         # The trained RandomForestRegressor model.
+│   ├── scaler.pkl              # StandardScaler used to normalize input features.
+│   └── encoder.pkl             # LabelEncoder used to convert text regions (North, South) to integers.
 │
-├── dashboard/
-│   └── dashboard.py            ← 5-tab Streamlit + Plotly dashboard
+├── notebooks/                  # Data Science Scripts
+│   ├── build_dataset.py        # Script to merge 4 regional datasets into the unified CSV.
+│   └── train_regional_model.py # Script that trains the RandomForest model and saves the .pkl files.
 │
-├── monitoring/
-│   ├── __init__.py
-│   └── prometheus_metrics.py   ← Counters, Histograms, Gauges
+├── infra/terraform/            # Infrastructure as Code (AWS)
+│   ├── main.tf                 # Provisions the EC2 instance, Security Group, and SSH Key Pair.
+│   ├── variables.tf            # Defines configurable variables (instance type, region, etc.).
+│   └── outputs.tf              # Outputs the final Public IP address of the EC2 instance.
 │
-├── data/
-│   └── unified_solar_dataset.csv  ← 70,272 hourly rows (generated)
+├── .github/workflows/          # CI/CD Pipelines
+│   └── aws_deploy.yml          # GitHub Actions script for SSH deployment to EC2.
 │
-├── tests/
-│   ├── __init__.py
-│   └── test_api.py             ← 41 pytest tests across 7 classes
-│
-├── .github/workflows/
-│   └── ci_cd.yml               ← GitHub Actions CI/CD
-│
-├── .env.example
-├── .gitignore
-├── docker-compose.yml
-├── Dockerfile
-├── prometheus.yml
-├── requirements.txt
-└── README.md
+├── docker-compose.yml          # Connects FastAPI, Streamlit, Prometheus, and Grafana.
+├── Dockerfile                  # Defines the OS and dependencies required to build the Python image.
+├── prometheus.yml              # Configures Prometheus to scrape FastAPI on port 8000.
+└── requirements.txt            # Python dependencies (fastapi, pandas, scikit-learn, etc.).
 ```
 
 ---
 
-## 🚀 Quick Start
+## 💻 Step-by-Step Installation & Setup (Local)
 
-### Prerequisites
-- Python 3.9+
-- ERA5 datasets in their respective folders (already at the configured paths)
+If you want to run the project on your local machine for development, follow these steps:
 
-### Step 1: Install dependencies
+### 1. Prerequisites
+- Install **Python 3.9+**
+- Install **Docker Desktop** (Make sure the Docker daemon is running)
+- Install **Git**
+
+### 2. Clone the Repository
 ```bash
-cd "solar power predictions devops ml"
+git clone https://github.com/YOUR_USERNAME/solarcast.git
+cd solarcast
+```
+
+### 3. Local Python Setup (Optional - For Training)
+If you want to retrain the model or test the Python code locally without Docker:
+```bash
+# Create a virtual environment
 python -m venv venv
-venv\Scripts\activate          # Windows
+
+# Activate it (Windows)
+venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
-```
 
-### Step 2: Build unified dataset
-```bash
-python notebooks/build_dataset.py
-```
-Creates `data/unified_solar_dataset.csv` (70,272 rows × 26 columns).
-
-### Step 3: Train the model
-```bash
+# Retrain the model
 python notebooks/train_regional_model.py
 ```
-Saves `model/solar_model.pkl`, `model/scaler.pkl`, `model/encoder.pkl`.
 
-Expected results:
-- **MAE**: ~0.065 kW | **RMSE**: ~0.132 kW | **R²**: ~0.997
-
-### Step 4: Start the API
+### 4. Run the Full Stack via Docker
+This is the recommended way to run the app locally. It spins up the entire production stack on your machine.
 ```bash
-uvicorn app.api:app --reload --host 0.0.0.0 --port 8000
+docker-compose up -d --build
 ```
-Swagger UI: **http://localhost:8000/docs**
 
-### Step 5: Launch dashboard
-```bash
-streamlit run dashboard/dashboard.py
-```
-Dashboard: **http://localhost:8501**
+### 5. Access the Local Services
+- **FastAPI UI:** `http://localhost:8000/docs`
+- **Streamlit App:** `http://localhost:8501`
+- **Prometheus:** `http://localhost:9090`
+- **Grafana:** `http://localhost:3000`
 
 ---
 
-## 🌐 API Usage
+## ☁️ Step-by-Step AWS Deployment (Terraform)
 
-### POST /predict
+This project uses Terraform to automatically build the AWS infrastructure. Follow these steps to deploy to the cloud.
 
+### 1. Prerequisites
+- Install the **AWS CLI** and configure it with your credentials (`aws configure`).
+- Install **Terraform**.
+
+### 2. Generate an SSH Key
+Terraform needs an SSH key to attach to your EC2 instance so GitHub Actions can log into it.
 ```bash
-curl -X POST http://localhost:8000/predict \
+# Run this inside the project root folder
+ssh-keygen -t rsa -b 4096 -f infra/ssh_key -q -N ""
+```
+This generates `infra/ssh_key` (Private Key) and `infra/ssh_key.pub` (Public Key).
+
+### 3. Configure Terraform Variables
+Create a file named `infra/terraform/terraform.tfvars` and add your public key:
+```hcl
+aws_region    = "us-east-1"
+project_name  = "solarcast"
+environment   = "production"
+instance_type = "t3.micro"
+public_key    = "YOUR_PUBLIC_KEY_CONTENT_FROM_infra/ssh_key.pub"
+```
+
+### 4. Deploy the Infrastructure
+```bash
+cd infra/terraform
+terraform init
+terraform apply -auto-approve
+```
+When this finishes, Terraform will output your `ec2_public_ip`. **Save this IP address.**
+
+---
+
+## 🔄 CI/CD Workflow Explanation
+
+The project uses GitHub Actions to automate deployments. You never have to manually copy files to the server.
+
+### How it works:
+1. The workflow (`aws_deploy.yml`) listens for any `git push` to the `main` branch.
+2. When triggered, a temporary GitHub runner starts up.
+3. It uses the `appleboy/ssh-action` to open an SSH connection to your new EC2 instance using the Private Key and Public IP.
+4. On the EC2 server, it runs `git pull` to download your latest code changes.
+5. It runs `docker compose up -d --build` to safely rebuild and restart the containers with zero downtime.
+
+### How to set it up:
+Go to your GitHub Repository -> **Settings** -> **Secrets and variables** -> **Actions**.
+Add the following two repository secrets:
+1. `EC2_HOST`: The Public IP address Terraform generated (e.g., `3.82.128.60`).
+2. `EC2_SSH_KEY`: The entire contents of your private key file (`infra/ssh_key`), including the `-----BEGIN` and `END-----` lines.
+
+Now, simply commit and push your code:
+```bash
+git add .
+git commit -m "Deploying to AWS"
+git push origin main
+```
+The pipeline will handle the rest!
+
+---
+
+## 🌐 API Usage & Prediction
+
+The FastAPI backend is fully documented via Swagger UI. You can test it in your browser at `http://YOUR_EC2_IP:8000/docs`, or use `cURL` or `Python` to send API requests.
+
+### Example API Request (POST /predict)
+```bash
+curl -X POST http://YOUR_EC2_IP:8000/predict \
   -H "Content-Type: application/json" \
   -d '{
     "region": "North",
@@ -180,7 +218,7 @@ curl -X POST http://localhost:8000/predict \
   }'
 ```
 
-**Response:**
+### Example API Response
 ```json
 {
   "region": "North",
@@ -191,278 +229,25 @@ curl -X POST http://localhost:8000/predict \
 }
 ```
 
-**Python:**
-```python
-import requests
-
-payload = {
-    "region": "South",
-    "temperature": 32.0, "pressure": 1005.0,
-    "precipitation": 0.0, "radiation": 820.0,
-    "wind_speed": 4.2, "hour": 11, "month": 4
-}
-r = requests.post("http://localhost:8000/predict", json=payload)
-print(r.json())
-```
-
-### All Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Welcome message |
-| GET | `/health` | Health + artifact status |
-| POST | `/predict` | Solar power prediction |
-| GET | `/metrics` | Prometheus metrics |
-| GET | `/docs` | Swagger UI |
-
 ---
 
-## 📊 Dashboard
+## 🤖 Machine Learning Details
 
-5-tab interactive Streamlit + Plotly dashboard:
+The AI model at the heart of SolarCast is a **Random Forest Regressor** trained on historical ERA5 climate data.
 
-| Tab | Contents |
-|-----|----------|
-| 📊 Region Overview | Per-region KPIs, actual vs predicted scatter, performance table |
-| 🔮 Live Prediction | Input sliders → API/local prediction + power gauge |
-| 📈 Feature Importance | Bar chart + sunburst + importance table |
-| 🌤️ Radiation Trends | Hourly/monthly radiation profiles, radiation vs power scatter |
-| 🌦️ Weather Impact | Temperature/pressure/precipitation/wind vs power with LOWESS trendlines + correlation heatmap |
+### Features (Inputs)
+- **temperature**: 2m air temperature (°C)
+- **pressure**: Surface pressure (hPa)
+- **precipitation**: Total precipitation (mm)
+- **radiation**: Solar radiation downward (W/m²)
+- **wind_speed**: Wind speed (m/s)
+- **hour_sin / hour_cos**: Cyclic time encoding to help the model understand time of day.
+- **month_sin / month_cos**: Cyclic month encoding to help the model understand seasons.
+- **region_encoded**: Categorical encoding representing the 4 Indian regions (North, South, East, West).
 
----
-
-## 📡 Monitoring
-
-| Metric | Type | Description |
-|--------|------|-------------|
-| `solarcast_request_count_total` | Counter | HTTP requests by method/endpoint/status |
-| `solarcast_request_latency_seconds` | Histogram | Request latency |
-| `solarcast_prediction_count_total` | Counter | Successful predictions |
-| `solarcast_prediction_latency_seconds` | Histogram | Inference time |
-| `solarcast_prediction_error_count_total` | Counter | Failed predictions |
-| `solarcast_predicted_power_kw` | Histogram | Power distribution |
-| `solarcast_cpu_usage_percent` | Gauge | CPU % |
-| `solarcast_memory_usage_percent` | Gauge | Memory % |
-| `solarcast_model_loaded` | Gauge | Model availability |
-
-```bash
-curl http://localhost:8000/metrics
-```
-
----
-
-## 🐳 Docker Usage
-
-### Single container
-```bash
-docker build -t solarcast-api:2.0.0 .
-docker run -d -p 8000:8000 \
-  -v $(pwd)/model:/app/model \
-  -v $(pwd)/data:/app/data \
-  solarcast-api:2.0.0
-```
-
-### Full stack
-```bash
-docker-compose up --build
-
-# Background
-docker-compose up -d --build
-
-# Logs
-docker-compose logs -f solarcast-api
-
-# Stop
-docker-compose down
-```
-
-| Service | URL |
-|---------|-----|
-| FastAPI | http://localhost:8000/docs |
-| Dashboard | http://localhost:8501 |
-| Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000 |
-
----
-
-## ☁️ AWS EC2 Deployment
-
-### Step 1: Launch EC2
-- AMI: Ubuntu Server 22.04 LTS
-- Instance: t2.medium (2 vCPU, 4GB RAM recommended)
-- Security Group — open ports: `22`, `8000`, `8501`, `9090`, `3000`
-
-### Step 2: Connect
-```bash
-chmod 400 your-key.pem
-ssh -i your-key.pem ubuntu@YOUR_EC2_IP
-```
-
-### Step 3: Install Docker
-```bash
-sudo apt-get update -y
-sudo apt-get install -y docker.io docker-compose-plugin git
-sudo systemctl enable --now docker
-sudo usermod -aG docker $USER && newgrp docker
-```
-
-### Step 4: Deploy
-```bash
-git clone https://github.com/YOUR_USERNAME/solarcast.git
-cd solarcast
-
-# Upload ERA5 data and run dataset builder
-# scp -i key.pem -r data/ ubuntu@EC2_IP:~/solarcast/data/
-
-pip3 install -r requirements.txt
-python3 notebooks/build_dataset.py
-python3 notebooks/train_regional_model.py
-
-docker compose up --build -d
-docker compose ps
-```
-
-### Step 5: Access
-```
-http://YOUR_EC2_IP:8000/docs   ← Swagger UI
-http://YOUR_EC2_IP:8501         ← Dashboard
-http://YOUR_EC2_IP:9090         ← Prometheus
-http://YOUR_EC2_IP:3000         ← Grafana
-```
-
----
-
-## ☁️ AWS ECS Deployment with Terraform
-
-This repository now includes a Terraform-based AWS ECS deployment in `infra/terraform` and a GitHub Actions workflow in `.github/workflows/aws_deploy.yml`.
-
-### Prerequisites
-- AWS account with a default VPC
-- GitHub secrets configured: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ACCOUNT_ID`
-- AWS region configured in `infra/terraform/terraform.tfvars.example`
-
-### GitHub deployment
-Push to `main` to trigger `.github/workflows/aws_deploy.yml`, which:
-1. creates the ECR repository
-2. builds and pushes the Docker image
-3. deploys the API to ECS Fargate behind an ALB
-
-### Manual Terraform deploy
-```bash
-cd infra/terraform
-terraform init
-terraform apply -auto-approve \
-  -var="aws_region=us-east-1" \
-  -var="project_name=solarcast-api" \
-  -var="image_tag=latest"
-```
-
-After deployment, retrieve the public endpoint with:
-```bash
-terraform output alb_dns_name
-```
-
----
-
-## 📈 Grafana Integration
-
-### 1. Add Prometheus data source
-- URL: `http://prometheus:9090` (Docker) or `http://localhost:9090` (local)
-
-### 2. Useful PromQL queries
-
-**Request rate:**
-```promql
-rate(solarcast_request_count_total[5m])
-```
-
-**Average prediction latency (ms):**
-```promql
-1000 * rate(solarcast_prediction_latency_seconds_sum[5m])
-       / rate(solarcast_prediction_latency_seconds_count[5m])
-```
-
-**Total predictions:**
-```promql
-solarcast_prediction_count_total
-```
-
-**Average predicted power (kW):**
-```promql
-rate(solarcast_predicted_power_kw_sum[5m])
-/ rate(solarcast_predicted_power_kw_count[5m])
-```
-
-**Error rate:**
-```promql
-rate(solarcast_prediction_error_count_total[5m])
-```
-
----
-
-## 🧪 Running Tests
-
-```bash
-# All 41 tests
-pytest tests/test_api.py -v
-
-# Short output
-pytest tests/test_api.py -v --tb=short
-
-# Specific class
-pytest tests/test_api.py::TestPredictEndpoint -v
-
-# With coverage
-pytest tests/test_api.py --cov=app --cov-report=term-missing
-```
-
----
-
-## 🔄 CI/CD Pipeline
-
-| Job | Trigger | Steps |
-|-----|---------|-------|
-| Test | Every push | Install → create dummy artifacts → pytest 41 tests |
-| Build | After tests | Build Docker → smoke test container |
-| Publish | Push to main | Build + push to Docker Hub |
-
-**Required GitHub Secrets (for publish):**
-- `DOCKER_USERNAME`
-- `DOCKER_PASSWORD`
-
----
-
-## 🤖 Model Details
-
-| Parameter | Value |
-|-----------|-------|
-| Algorithm | RandomForestRegressor |
-| n_estimators | 50 (compressed) |
-| max_depth | 12 |
-| Training samples | 56,217 |
-| Test samples | 14,055 |
-| Features | 10 (9 numeric + 1 encoded) |
-| MAE | ~0.065 kW |
-| RMSE | ~0.132 kW |
-| R² | ~0.997 |
-
-**Features:**
-
-| Feature | Description |
-|---------|-------------|
-| temperature | 2m air temperature (°C) |
-| pressure | Surface pressure (hPa) |
-| precipitation | Total precipitation (mm) |
-| radiation | Solar radiation downward (W/m²) |
-| wind_speed | Wind speed √(u²+v²) (m/s) |
-| hour_sin / hour_cos | Cyclic hour encoding |
-| month_sin / month_cos | Cyclic month encoding |
-| region_encoded | LabelEncoded region (0–3) |
-
----
-
-<div align="center">
-  <strong>☀️ SolarCast v2.0</strong><br>
-  Region-Based Solar Power Generation Forecasting<br>
-  ERA5 · RandomForest · FastAPI · Streamlit · Prometheus · Docker
-</div>
+### Performance Metrics
+- **Algorithm**: RandomForestRegressor
+- **Data Size**: ~70,000 hourly rows
+- **Mean Absolute Error (MAE)**: ~0.065 kW
+- **Root Mean Squared Error (RMSE)**: ~0.132 kW
+- **R² Score**: ~0.997 (High accuracy due to strong correlation between solar radiation and power output).
