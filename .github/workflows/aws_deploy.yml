@@ -34,7 +34,7 @@ jobs:
           terraform_version: 1.6.0
 
       - name: Initialize Terraform
-        run: terraform -chdir=infra/terraform init
+        run: terraform -chdir=infra/terraform init -verify-plugins=false
 
       - name: Create ECR repository for Terraform state
         run: |
