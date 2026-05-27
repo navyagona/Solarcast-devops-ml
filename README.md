@@ -332,6 +332,38 @@ http://YOUR_EC2_IP:3000         ← Grafana
 
 ---
 
+## ☁️ AWS ECS Deployment with Terraform
+
+This repository now includes a Terraform-based AWS ECS deployment in `infra/terraform` and a GitHub Actions workflow in `.github/workflows/aws_deploy.yml`.
+
+### Prerequisites
+- AWS account with a default VPC
+- GitHub secrets configured: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ACCOUNT_ID`
+- AWS region configured in `infra/terraform/terraform.tfvars.example`
+
+### GitHub deployment
+Push to `main` to trigger `.github/workflows/aws_deploy.yml`, which:
+1. creates the ECR repository
+2. builds and pushes the Docker image
+3. deploys the API to ECS Fargate behind an ALB
+
+### Manual Terraform deploy
+```bash
+cd infra/terraform
+terraform init
+terraform apply -auto-approve \
+  -var="aws_region=us-east-1" \
+  -var="project_name=solarcast-api" \
+  -var="image_tag=latest"
+```
+
+After deployment, retrieve the public endpoint with:
+```bash
+terraform output alb_dns_name
+```
+
+---
+
 ## 📈 Grafana Integration
 
 ### 1. Add Prometheus data source
