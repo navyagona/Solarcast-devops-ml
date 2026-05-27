@@ -21,6 +21,38 @@
 
 **SolarCast v2.0** brings together Machine Learning, Backend Engineering, Frontend Dashboards, and DevOps best practices into a single, cohesive architecture.
 
+### Architecture Diagram
+
+```mermaid
+graph TD
+    User([End Users])
+    Dev([Developers])
+    GitHub([GitHub Actions CI/CD])
+    Terraform([Terraform IaC])
+
+    subgraph AWS Cloud
+        subgraph EC2 [AWS EC2 Instance - t3.micro]
+            subgraph Docker [Docker Compose Network]
+                UI[Streamlit Dashboard<br>Port 8501]
+                API[FastAPI Backend<br>Port 8000]
+                Prom[Prometheus Metrics<br>Port 9090]
+                Graf[Grafana Dashboards<br>Port 3000]
+            end
+        end
+    end
+
+    Dev -- "Push Code (main)" --> GitHub
+    Dev -- "terraform apply" --> Terraform
+    Terraform -- "Provisions Server & Network" --> AWS Cloud
+    GitHub -- "SSH Deploy & docker-compose up" --> EC2
+
+    User -- "Views Dashboard" --> UI
+    User -- "REST API Calls" --> API
+    UI -- "Fetches Predictions" --> API
+    Prom -- "Scrapes /metrics endpoint" --> API
+    Graf -- "Queries Timeseries Data" --> Prom
+```
+
 ### Architecture Workflow
 1. **Infrastructure as Code (IaC):** The entire AWS infrastructure is provisioned using **Terraform**. Terraform spins up a `t3.micro` EC2 instance, configures an AWS Security Group (opening ports for the API, Dashboard, and Monitoring), and generates an SSH key for access.
 2. **CI/CD Pipeline:** Developers push code to the `main` branch on GitHub. A **GitHub Actions** workflow triggers automatically.
@@ -32,19 +64,41 @@
 
 ## 🛠️ Services Explanation
 
-The `docker-compose.yml` orchestrates four primary services that talk to each other:
+The application stack consists of five major components working seamlessly together. Here is an elaborated breakdown of what each service does and how it runs:
 
-1. **FastAPI (Backend - Port 8000):**  
-   The core engine of the application. It loads the pre-trained RandomForest model and exposes HTTP endpoints (like `/predict` and `/health`). It validates incoming weather data using `Pydantic`, runs the ML inference pipeline, and returns the predicted solar output.
-   
-2. **Streamlit (Frontend - Port 8501):**  
-   An interactive web dashboard built purely in Python. It provides a visual interface for users to adjust weather parameters using sliders, instantly fetching predictions from the FastAPI backend. It also visualizes feature importance and historical trends using Plotly charts.
-   
-3. **Prometheus (Metrics Collector - Port 9090):**  
-   A time-series database configured to scrape the FastAPI `/metrics` endpoint every few seconds. It records the number of API requests, prediction latencies, HTTP errors, and system resource usage.
+### 1. AWS EC2 (Elastic Compute Cloud) - The Host Machine
+- **What it does:** EC2 is the backbone server (virtual machine) hosted in the AWS Cloud. Instead of relying on serverless platforms, we rent a dedicated `t3.micro` Linux instance (Ubuntu) that stays online 24/7.
+- **How it runs:** Provisioned dynamically by Terraform. It acts as the single entry point for our users and developers.
+- **Purpose:** It provides the CPU, Memory (RAM), and network bandwidth required to run the Docker daemon. It holds our source code, downloaded via GitHub Actions, and runs the entire `docker-compose` network.
 
-4. **Grafana (Monitoring Dashboard - Port 3000):**  
-   A powerful visualization tool connected to Prometheus. It allows developers to create real-time dashboards to monitor the health of the application, API response times, and total successful ML predictions.
+### 2. FastAPI (Backend - Port 8000)
+- **What it does:** The core intelligence engine of the application. 
+- **How it runs:** Runs inside a lightweight Python Docker container. It loads our pre-trained Machine Learning model (`RandomForestRegressor`) into memory at startup.
+- **Purpose:** It exposes HTTP REST endpoints (`/predict` and `/health`). It intercepts incoming API calls containing live weather data, strictly validates the payload using Pydantic, passes the data through the ML inference pipeline, and returns the predicted solar power output in JSON format.
+
+### 3. Streamlit (Frontend Dashboard - Port 8501)
+- **What it does:** An interactive, visually appealing frontend web application built entirely in Python.
+- **How it runs:** Runs in its own Docker container and communicates with the FastAPI container internally over the Docker network.
+- **Purpose:** It gives non-technical users a way to interact with the ML model. Users can adjust sliders for Temperature, Wind Speed, and Radiation, and the dashboard instantly asks FastAPI for a prediction. It also renders rich, interactive Plotly charts showcasing historical weather trends and feature importance.
+
+### 4. Prometheus (Time-Series Metrics Collector - Port 9090)
+- **What it does:** A specialized database designed specifically for monitoring the health and performance of the application.
+- **How it runs:** A standalone Docker container configured to periodically "scrape" data from FastAPI. 
+- **Purpose:** FastAPI exposes a special hidden endpoint (`/metrics`). Every few seconds, Prometheus connects to this endpoint and records detailed statistics:
+  - How many API requests were made?
+  - How long did the Machine Learning model take to predict the result? (Prediction Latency)
+  - Did the API throw any 500 Server Errors?
+  - How much CPU and memory is the container using?
+  - What was the actual numerical power output predicted?
+
+### 5. Grafana (Observability Dashboard - Port 3000)
+- **What it does:** A highly customizable, professional data visualization platform.
+- **How it runs:** A Docker container that connects directly to the Prometheus database as its data source.
+- **Purpose:** While Prometheus *collects* the data, Grafana *displays* it. Developers log into Grafana to create beautiful, real-time observability dashboards. By writing "PromQL" (Prometheus Query Language) in Grafana, you can build live charts showing:
+  - **Traffic Spikes:** A graph showing HTTP requests per minute.
+  - **Performance Degradation:** A gauge showing if ML prediction times exceed 500ms.
+  - **Business Metrics:** A live ticker showing the total amount of Solar Power predicted today.
+  - Alerts can be configured here to send a Slack or Email notification if the API goes down.
 
 ---
 
