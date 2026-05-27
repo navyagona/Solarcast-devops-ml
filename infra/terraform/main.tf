@@ -145,7 +145,7 @@ resource "aws_ecs_task_definition" "api" {
         protocol      = "tcp"
       }]
       environment = [
-        { name = "ENV" value = var.environment }
+        { name = "ENV", value = var.environment }
       ]
       logConfiguration = {
         logDriver = "awslogs"
